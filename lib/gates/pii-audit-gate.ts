@@ -5,7 +5,7 @@
  * 운영자 수기 로그는 금지. 시스템이 자동 생성해야 한다.
  */
 
-import { PIIDataType } from '@prisma/client';
+import { PIIDataType } from '../types/prisma-enums';
 import { prisma } from '../db/prisma';
 
 export interface PIIDeleteRequest {
@@ -131,7 +131,7 @@ export class PIIAuditGate {
       },
     });
 
-    const completedLogs = logs.filter(log => log.slaMs !== null) as Array<{
+    const completedLogs = logs.filter((log: { slaMs: number | null }) => log.slaMs !== null) as Array<{
       slaMs: number;
     }>;
 

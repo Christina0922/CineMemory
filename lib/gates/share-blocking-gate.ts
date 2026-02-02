@@ -8,7 +8,7 @@
  * - 이미지 화이트리스트(허용 도메인/패턴) 강제
  */
 
-import { ShareType } from '@prisma/client';
+import { ShareType } from '../types/prisma-enums';
 import { prisma } from '../db/prisma';
 
 // TMDb 이미지 URL 패턴 (차단 대상)

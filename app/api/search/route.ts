@@ -12,12 +12,19 @@ import { prisma } from '@/lib/db/prisma';
 import { GenreClassifier } from '@/lib/api/modules/genre-classifier';
 import { CandidateRanker } from '@/lib/api/modules/candidate-ranker';
 import { QuestionSelector } from '@/lib/api/modules/question-selector';
-import { SessionEndStatus } from '@prisma/client';
+
+// [DIAGNOSTIC] 캐시 방지 설정
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { userSentence, sessionId } = body;
+
+    // [DIAGNOSTIC] 요청 method 및 입력 문장 로그
+    console.log('[search-api] method: POST');
+    console.log('[search-api] input:', { raw: userSentence, sessionId });
 
     if (!userSentence) {
       return NextResponse.json(
@@ -69,56 +76,53 @@ export async function POST(request: NextRequest) {
       });
 
       // 2. Candidate Ranker
+      const normalizedQuery = userSentence.trim().toLowerCase();
+      console.log('[search-api] normalized query:', normalizedQuery);
+      
       const candidateResult = await CandidateRanker.rank({
         sessionId: session.id,
         userSentence,
         genreHints: [genreResult.primaryGenre, ...genreResult.secondaryGenres],
       });
+      
+      console.log('[search-api] candidate result:', {
+        count: candidateResult.candidates.length,
+        top1: candidateResult.candidates[0]?.movieId,
+        hasLowConfidence: candidateResult.hasLowConfidence
+      });
 
-      // 3. 후보 영화 저장 (예시 데이터 - 실제로는 DB에서 조회)
+      // 3. 후보 영화 저장 (DB에서 조회한 영화 사용)
       if (candidateResult.candidates.length > 0 && !candidateResult.hasLowConfidence) {
-        // 예시 영화 데이터 (실제로는 TMDb API 또는 DB에서 조회)
-        const exampleMovies = [
-          { id: 'movie-1', title: 'The Matrix', originalTitle: 'The Matrix', year: 1999, genre: 'SCIENCE_FICTION' },
-          { id: 'movie-2', title: 'Inception', originalTitle: 'Inception', year: 2010, genre: 'SCIENCE_FICTION' },
-          { id: 'movie-3', title: 'Interstellar', originalTitle: 'Interstellar', year: 2014, genre: 'SCIENCE_FICTION' },
-          { id: 'movie-4', title: 'The Shawshank Redemption', originalTitle: 'The Shawshank Redemption', year: 1994, genre: 'DRAMA' },
-          { id: 'movie-5', title: 'Pulp Fiction', originalTitle: 'Pulp Fiction', year: 1994, genre: 'CRIME' },
-        ];
-
         for (const candidate of candidateResult.candidates) {
-          // 예시 영화 찾기
-          const exampleMovie = exampleMovies.find(m => m.id === candidate.movieId);
-          
-          if (exampleMovie) {
-            // 영화가 없으면 생성
-            let movie = await prisma.movie.findFirst({
-              where: { id: candidate.movieId },
-            });
+          // 영화가 DB에 존재하는지 확인 (candidate-ranker가 반환한 movieId는 DB에 있는 영화)
+          const movie = await prisma.movie.findUnique({
+            where: { id: candidate.movieId },
+          });
 
-            if (!movie) {
-              movie = await prisma.movie.create({
-                data: {
-                  id: exampleMovie.id,
-                  title: exampleMovie.title,
-                  originalTitle: exampleMovie.originalTitle,
-                  releaseDate: new Date(exampleMovie.year, 0, 1),
-                  primaryGenre: exampleMovie.genre,
-                  secondaryGenres: genreResult.secondaryGenres,
-                  subgenres: genreResult.subgenres,
-                },
-              });
-            }
-
-            await prisma.candidate.create({
-              data: {
-                sessionId: session.id,
-                movieId: movie.id,
-                rank: candidate.rank,
-                confidenceScore: candidate.confidenceScore,
-              },
-            });
+          if (!movie) {
+            console.warn('[search-api] movie not found:', candidate.movieId);
+            continue; // 영화가 없으면 스킵
           }
+
+          // Candidate 생성 (중복 방지)
+          await prisma.candidate.upsert({
+            where: {
+              sessionId_rank: {
+                sessionId: session.id,
+                rank: candidate.rank,
+              },
+            },
+            create: {
+              sessionId: session.id,
+              movieId: movie.id,
+              rank: candidate.rank,
+              confidenceScore: candidate.confidenceScore,
+            },
+            update: {
+              movieId: movie.id,
+              confidenceScore: candidate.confidenceScore,
+            },
+          });
         }
       }
 
@@ -166,9 +170,16 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Failed to create or retrieve session' },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json({
       sessionId: session.id,
-      candidates: session.candidates.map(c => ({
+      candidates: session.candidates.map((c: any) => ({
         id: c.id,
         movie: {
           id: c.movie.id,
@@ -180,7 +191,7 @@ export async function POST(request: NextRequest) {
         rank: c.rank,
         confidenceScore: c.confidenceScore,
       })),
-      questions: session.questions.map(q => ({
+      questions: session.questions.map((q: any) => ({
         id: q.id,
         questionText: q.questionText,
         questionType: q.questionType,

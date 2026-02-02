@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GenreClassifier } from '@/lib/api/modules/genre-classifier';
 import { APIAuditGate } from '@/lib/gates/api-audit-gate';
+import { APIModule } from '@/lib/types/prisma-enums';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,7 +14,7 @@ export async function POST(request: NextRequest) {
 
     // Rate limit check
     if (apiKey) {
-      const rateLimit = await APIAuditGate.checkRateLimit(apiKey, 'GENRE_CLASSIFIER');
+      const rateLimit = await APIAuditGate.checkRateLimit(apiKey, APIModule.GENRE_CLASSIFIER);
       if (!rateLimit.allowed) {
         return NextResponse.json(
           { error: 'Rate limit exceeded' },

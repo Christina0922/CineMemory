@@ -7,6 +7,7 @@
  */
 
 import { prisma } from '../db/prisma';
+import { FailureType } from '../types/prisma-enums';
 import { IntentType } from './intent-classifier';
 import { Genre } from './genre-decider';
 import { Tag } from './tag-granularizer';
@@ -48,7 +49,9 @@ export class DecisionLogger {
       
       const logData = {
         sessionId: null, // 파이프라인 로그는 세션과 독립적일 수 있음
-        failureType: entry.resultType === 'FAILURE' ? 'PIPELINE_FAILURE' : 'NONE',
+        failureType: (entry.resultType === 'FAILURE' 
+          ? (entry.failureType ? (entry.failureType as FailureType) : FailureType.API_ERROR)
+          : FailureType.NO_CANDIDATES) as FailureType,
         userSentence: entry.userInput,
         context: {
           intent: entry.intent,
@@ -95,7 +98,7 @@ export class DecisionLogger {
         },
       });
 
-      return logs.map(log => ({
+      return logs.map((log: { id: string; userSentence: string | null; context: any; failureType: string | null; createdAt: Date }) => ({
         id: log.id,
         input: log.userSentence,
         context: log.context,

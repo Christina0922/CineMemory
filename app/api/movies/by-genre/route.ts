@@ -7,6 +7,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 
+export const dynamic = 'force-dynamic';
+
+type MovieGenreRow = {
+  primaryGenre: string | null;
+};
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -78,8 +84,8 @@ export async function GET(request: NextRequest) {
       distinct: ['primaryGenre'],
     });
 
-    const availableGenres = genres
-      .map(m => m.primaryGenre)
+    const availableGenres = (genres as Array<{ primaryGenre: string | null }>)
+      .map((m) => m.primaryGenre)
       .filter((g): g is string => g !== null);
 
     return NextResponse.json({

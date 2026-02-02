@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 
 interface Movie {
@@ -24,29 +24,7 @@ export default function GenresPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    loadGenres();
-    
-    // URL 파라미터에서 장르 읽기
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const genreParam = params.get('genre');
-      if (genreParam) {
-        setSelectedGenre(genreParam);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (selectedGenre) {
-      loadMovies();
-    } else {
-      setMovies([]);
-      setTotal(0);
-    }
-  }, [selectedGenre, selectedYear, sort]);
-
-  const loadGenres = async () => {
+  const loadGenres = useCallback(async () => {
     try {
       const response = await fetch('/api/movies/by-genre?limit=0');
       const data = await response.json();
@@ -56,9 +34,9 @@ export default function GenresPage() {
     } catch (error) {
       console.error('Failed to load genres:', error);
     }
-  };
+  }, []);
 
-  const loadMovies = async () => {
+  const loadMovies = useCallback(async () => {
     if (!selectedGenre) return;
 
     setLoading(true);
@@ -84,7 +62,29 @@ export default function GenresPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedGenre, selectedYear, sort]);
+
+  useEffect(() => {
+    loadGenres();
+    
+    // URL 파라미터에서 장르 읽기
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const genreParam = params.get('genre');
+      if (genreParam) {
+        setSelectedGenre(genreParam);
+      }
+    }
+  }, [loadGenres]);
+
+  useEffect(() => {
+    if (selectedGenre) {
+      loadMovies();
+    } else {
+      setMovies([]);
+      setTotal(0);
+    }
+  }, [selectedGenre, selectedYear, sort, loadMovies]);
 
   const genreColors: Record<string, string> = {
     'SCIENCE_FICTION': 'from-blue-400 to-cyan-400',

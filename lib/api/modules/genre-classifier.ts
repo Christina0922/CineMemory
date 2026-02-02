@@ -5,7 +5,7 @@
  * - LLM은 보조 도구, 규칙+데이터 기반 우선
  */
 
-import { TagType, ConfidenceLevel } from '@prisma/client';
+import { TagType, ConfidenceLevel, APIModule } from '../../types/prisma-enums';
 import { TagDecisionGate } from '../../gates/tag-decision-gate';
 import { APIAuditGate } from '../../gates/api-audit-gate';
 
@@ -45,7 +45,7 @@ export class GenreClassifier {
 
       // API 감사 로그
       await APIAuditGate.log({
-        module: 'GENRE_CLASSIFIER',
+        module: APIModule.GENRE_CLASSIFIER,
         apiKey,
         endpoint: '/api/modules/genre-classifier',
         method: 'POST',
@@ -58,7 +58,7 @@ export class GenreClassifier {
       const processingTime = Date.now() - startTime;
 
       await APIAuditGate.log({
-        module: 'GENRE_CLASSIFIER',
+        module: APIModule.GENRE_CLASSIFIER,
         apiKey,
         endpoint: '/api/modules/genre-classifier',
         method: 'POST',

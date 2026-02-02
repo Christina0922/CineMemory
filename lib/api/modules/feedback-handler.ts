@@ -6,7 +6,7 @@
  * - Failure Refinery 연동
  */
 
-import { FeedbackType, FailureType, SessionEndStatus } from '@prisma/client';
+import { FeedbackType, FailureType, SessionEndStatus, APIModule } from '../../types/prisma-enums';
 import { SessionEndGate } from '../../gates/session-end-gate';
 import { APIAuditGate } from '../../gates/api-audit-gate';
 import { prisma } from '../../db/prisma';
@@ -78,7 +78,7 @@ export class FeedbackHandler {
       const processingTime = Date.now() - startTime;
 
       await APIAuditGate.log({
-        module: 'FEEDBACK_HANDLER',
+        module: APIModule.FEEDBACK_HANDLER,
         apiKey,
         endpoint: '/api/modules/feedback-handler',
         method: 'POST',
@@ -95,7 +95,7 @@ export class FeedbackHandler {
       const processingTime = Date.now() - startTime;
 
       await APIAuditGate.log({
-        module: 'FEEDBACK_HANDLER',
+        module: APIModule.FEEDBACK_HANDLER,
         apiKey,
         endpoint: '/api/modules/feedback-handler',
         method: 'POST',

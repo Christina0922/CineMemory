@@ -10,7 +10,7 @@
  * 종료 상태가 없으면 버그로 간주한다.
  */
 
-import { SessionEndStatus } from '@prisma/client';
+import { SessionEndStatus } from '../types/prisma-enums';
 import { prisma } from '../db/prisma';
 
 export class SessionEndGate {
@@ -90,7 +90,7 @@ export class SessionEndGate {
 
     return {
       valid: true,
-      endStatus: session.endStatus,
+      endStatus: session.endStatus as SessionEndStatus,
     };
   }
 }

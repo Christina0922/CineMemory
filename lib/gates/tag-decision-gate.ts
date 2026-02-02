@@ -5,7 +5,7 @@
  * author, created_at, version을 항상 기록한다.
  */
 
-import { TagType, ConfidenceLevel } from '@prisma/client';
+import { TagType, ConfidenceLevel } from '../types/prisma-enums';
 import { z } from 'zod';
 import { prisma } from '../db/prisma';
 
@@ -88,16 +88,13 @@ export class TagDecisionGate {
    */
   static async detectMissingReason(): Promise<{
     count: number;
-    tags: Array<{ id: string; movieId: string; tagType: TagType }>;
+    tags: Array<{ id: string; movieId: string; tagType: string }>;
   }> {
     // Prisma는 스키마 레벨에서 reason을 필수로 강제하므로,
-    // 이 함수는 추가 검증용 (데이터 무결성 확인)
+    // 이 함수는 빈 문자열만 체크 (데이터 무결성 확인)
     const tags = await prisma.movieTag.findMany({
       where: {
-        OR: [
-          { reason: null },
-          { reason: '' },
-        ],
+        reason: '',
       },
       select: {
         id: true,
@@ -108,7 +105,11 @@ export class TagDecisionGate {
 
     return {
       count: tags.length,
-      tags,
+      tags: tags.map(t => ({
+        id: t.id,
+        movieId: t.movieId,
+        tagType: t.tagType as string,
+      })),
     };
   }
 }

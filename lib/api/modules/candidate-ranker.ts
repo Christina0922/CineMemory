@@ -8,6 +8,7 @@
 
 import { prisma } from '../../db/prisma';
 import { APIAuditGate } from '../../gates/api-audit-gate';
+import { APIModule } from '../../types/prisma-enums';
 
 export interface CandidateRankingInput {
   sessionId: string;
@@ -48,7 +49,7 @@ export class CandidateRanker {
       const processingTime = Date.now() - startTime;
 
       await APIAuditGate.log({
-        module: 'CANDIDATE_RANKER',
+        module: APIModule.CANDIDATE_RANKER,
         apiKey,
         endpoint: '/api/modules/candidate-ranker',
         method: 'POST',
@@ -61,7 +62,7 @@ export class CandidateRanker {
       const processingTime = Date.now() - startTime;
 
       await APIAuditGate.log({
-        module: 'CANDIDATE_RANKER',
+        module: APIModule.CANDIDATE_RANKER,
         apiKey,
         endpoint: '/api/modules/candidate-ranker',
         method: 'POST',
@@ -79,42 +80,105 @@ export class CandidateRanker {
   private static async rankCandidates(
     input: CandidateRankingInput
   ): Promise<CandidateRankingResult> {
-    // MVP: 간단한 키워드 매칭 기반 랭킹
-    // 실제로는 장르/무드/오브제 매칭, 신뢰도 점수 계산 필요
-    
-    // 예시 영화 데이터 (실제로는 DB에서 조회)
-    const exampleMovies = [
-      { id: 'movie-1', title: 'The Matrix', genre: 'SCIENCE_FICTION', score: 0.85 },
-      { id: 'movie-2', title: 'Inception', genre: 'SCIENCE_FICTION', score: 0.78 },
-      { id: 'movie-3', title: 'Interstellar', genre: 'SCIENCE_FICTION', score: 0.72 },
-      { id: 'movie-4', title: 'The Shawshank Redemption', genre: 'DRAMA', score: 0.90 },
-      { id: 'movie-5', title: 'Pulp Fiction', genre: 'CRIME', score: 0.88 },
-    ];
+    // [DIAGNOSTIC] 입력값 로그
+    console.log('[candidate-ranker] input:', {
+      raw: input.userSentence,
+      normalized: input.userSentence.trim().toLowerCase(),
+      genreHints: input.genreHints
+    });
 
+    // DB에서 영화 조회
+    const whereClause: any = {};
+    
     // 장르 힌트가 있으면 필터링
-    let filteredMovies = exampleMovies;
     if (input.genreHints && input.genreHints.length > 0) {
-      // 장르 매칭 (간단한 예시)
-      filteredMovies = exampleMovies.filter(m => 
-        input.genreHints!.some(hint => m.genre.includes(hint) || hint.includes(m.genre))
-      );
+      whereClause.OR = [
+        { primaryGenre: { in: input.genreHints } },
+        { secondaryGenres: { hasSome: input.genreHints } },
+      ];
     }
 
-    // 신뢰도 점수 기준 정렬 및 상위 3개 선택
-    const ranked = filteredMovies
+    // DB에서 영화 조회 (최대 100개 후보 중에서 랭킹)
+    const movies = await prisma.movie.findMany({
+      where: whereClause,
+      take: 100, // 랭킹 후보 풀
+      orderBy: { createdAt: 'desc' }, // 최신순 우선
+    });
+
+    console.log('[candidate-ranker] db movies found:', movies.length);
+
+    // 데이터가 없으면 빈 결과 반환
+    if (movies.length === 0) {
+      console.log('[candidate-ranker] NO_DATA: no movies in database');
+      return {
+        candidates: [],
+        hasLowConfidence: true,
+      };
+    }
+
+    // userSentence 기반 키워드 매칭 점수 계산
+    const normalizedQuery = input.userSentence.trim().toLowerCase();
+    const queryWords = normalizedQuery.split(/\s+/).filter(w => w.length > 2); // 2글자 이상 단어만
+
+    const scoredMovies = movies.map(movie => {
+      let score = 0.5; // 기본 점수
+
+      // 제목 매칭 (높은 가중치)
+      const titleLower = (movie.title || '').toLowerCase();
+      const originalTitleLower = (movie.originalTitle || '').toLowerCase();
+      
+      if (titleLower.includes(normalizedQuery) || originalTitleLower.includes(normalizedQuery)) {
+        score += 0.4; // 완전 일치
+      } else {
+        // 단어별 부분 매칭
+        const titleWords = (titleLower + ' ' + originalTitleLower).split(/\s+/);
+        const matchedWords = queryWords.filter(qw => 
+          titleWords.some(tw => tw.includes(qw) || qw.includes(tw))
+        );
+        score += (matchedWords.length / Math.max(queryWords.length, 1)) * 0.3;
+      }
+
+      // 장르 매칭 (보조 점수)
+      if (input.genreHints && input.genreHints.length > 0) {
+        const genreMatch = 
+          (movie.primaryGenre && input.genreHints.includes(movie.primaryGenre)) ||
+          movie.secondaryGenres.some(g => input.genreHints!.includes(g));
+        if (genreMatch) {
+          score += 0.1;
+        }
+      }
+
+      // 점수 정규화 (0.0 ~ 1.0)
+      score = Math.min(1.0, Math.max(0.0, score));
+
+      return {
+        movieId: movie.id,
+        score,
+        movie,
+      };
+    });
+
+    // 점수 기준 정렬 및 상위 3개 선택
+    const ranked = scoredMovies
       .sort((a, b) => b.score - a.score)
       .slice(0, this.MAX_CANDIDATES)
-      .map((movie, index) => ({
-        movieId: movie.id,
+      .map((item, index) => ({
+        movieId: item.movieId,
         rank: index + 1,
-        confidenceScore: movie.score,
+        confidenceScore: item.score,
       }));
+
+    console.log('[candidate-ranker] ranked top3:', ranked.map(r => ({
+      movieId: r.movieId,
+      confidence: r.confidenceScore
+    })));
 
     // Confidence Cutoff 체크
     const hasLowConfidence = ranked.length === 0 || 
       ranked[0].confidenceScore < this.CONFIDENCE_CUTOFF;
 
     if (hasLowConfidence) {
+      console.log('[candidate-ranker] LOW_CONFIDENCE: top score', ranked[0]?.confidenceScore, '< cutoff', this.CONFIDENCE_CUTOFF);
       // 보상 경로: 모호함 안내 + 외부 검색/OTT 티켓 + 제보 저장
       return {
         candidates: [],

@@ -50,6 +50,7 @@ enum SessionEndStatus {
 model MovieTag {
   id          String   @id @default(cuid())
   movieId    String   // TMDb ID 또는 내부 ID
+  movie      Movie?   @relation(fields: [movieId], references: [id])
   tagType    TagType
   tagCode    String   // 언어 중립 코드 (예: OBJ_001, MOOD_042)
   

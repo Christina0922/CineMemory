@@ -4,7 +4,7 @@
  * 모듈별 접근 제어, Rate Limit, API Key 생애주기, 호출 Audit Log
  */
 
-import { APIModule } from '@prisma/client';
+import { APIModule } from '../types/prisma-enums';
 import { prisma } from '../db/prisma';
 
 export interface APIAuditLogInput {

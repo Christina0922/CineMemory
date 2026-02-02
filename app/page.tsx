@@ -36,15 +36,32 @@ export default function HomePage() {
     e.preventDefault();
     if (!userSentence.trim()) return;
 
+    // [DIAGNOSTIC] 입력 텍스트 로그
+    console.log('[search] query:', userSentence);
+
+    const url = '/api/search';
+    const requestBody = { userSentence, sessionId };
+    
+    // [DIAGNOSTIC] 요청 URL 및 바디 로그
+    console.log('[search] request:', { url, bodyOrParams: requestBody });
+
     setLoading(true);
     try {
-      const response = await fetch('/api/search', {
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userSentence, sessionId }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
+      
+      // [DIAGNOSTIC] 응답의 후보 1위 제목과 confidence 로그
+      const top1 = data.candidates?.[0];
+      console.log('[search] response top1:', top1 ? {
+        title: top1.movie?.title,
+        confidence: top1.confidenceScore,
+        movieId: top1.movie?.id
+      } : 'no candidates');
       
       if (response.ok) {
         setSessionId(data.sessionId);

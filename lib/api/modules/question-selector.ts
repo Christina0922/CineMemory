@@ -6,7 +6,7 @@
  * - "기억 안 남" 옵션은 항상 제공
  */
 
-import { QuestionType } from '@prisma/client';
+import { QuestionType, APIModule } from '../../types/prisma-enums';
 import { prisma } from '../../db/prisma';
 import { APIAuditGate } from '../../gates/api-audit-gate';
 
@@ -53,7 +53,7 @@ export class QuestionSelector {
       const processingTime = Date.now() - startTime;
 
       await APIAuditGate.log({
-        module: 'QUESTION_SELECTOR',
+        module: APIModule.QUESTION_SELECTOR,
         apiKey,
         endpoint: '/api/modules/question-selector',
         method: 'POST',
@@ -69,7 +69,7 @@ export class QuestionSelector {
       const processingTime = Date.now() - startTime;
 
       await APIAuditGate.log({
-        module: 'QUESTION_SELECTOR',
+        module: APIModule.QUESTION_SELECTOR,
         apiKey,
         endpoint: '/api/modules/question-selector',
         method: 'POST',

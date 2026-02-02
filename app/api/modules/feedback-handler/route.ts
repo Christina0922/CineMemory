@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { FeedbackHandler } from '@/lib/api/modules/feedback-handler';
 import { APIAuditGate } from '@/lib/gates/api-audit-gate';
+import { APIModule } from '@/lib/types/prisma-enums';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,7 +14,7 @@ export async function POST(request: NextRequest) {
 
     // Rate limit check
     if (apiKey) {
-      const rateLimit = await APIAuditGate.checkRateLimit(apiKey, 'FEEDBACK_HANDLER');
+      const rateLimit = await APIAuditGate.checkRateLimit(apiKey, APIModule.FEEDBACK_HANDLER);
       if (!rateLimit.allowed) {
         return NextResponse.json(
           { error: 'Rate limit exceeded' },
