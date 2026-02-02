@@ -1,0 +1,364 @@
+// CineMemory Database Schema
+// MVP: DD/M&A 실사 기준 설계
+// 우선순위: 로그/증빙 > 기능
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// Gate A: 세션 종료 로그 (100% 필수)
+// ============================================
+model SearchSession {
+  id                    String   @id @default(cuid())
+  userMemorySentence    String   // 제목 없는 기억 문장
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  // Gate A: 반드시 하나의 종료 상태가 있어야 함
+  endStatus             SessionEndStatus?
+  endStatusReason       String?  // 종료 사유
+  
+  // 후보 및 질문
+  candidates            Candidate[]
+  questions             Question[]
+  feedbacks             Feedback[]
+  
+  // 성능 추적 (Cost Ceiling)
+  externalApiCalls      Int      @default(0) // 목표: <= 1
+  internalProcessingMs  Int?     // 목표: <= 100ms
+  
+  @@index([endStatus])
+  @@index([createdAt])
+}
+
+enum SessionEndStatus {
+  SUCCESS_CONFIRMED        // 확정
+  LOW_CONFIDENCE           // 컷 미만
+  FAILED_AFTER_QUESTIONS   // 질문 후 실패
+  SUBMITTED_HINT           // 제보/추가정보 제출
+}
+
+// ============================================
+// Gate B: Tag Decision Log (100% 필수)
+// ============================================
+model MovieTag {
+  id          String   @id @default(cuid())
+  movieId    String   // TMDb ID 또는 내부 ID
+  tagType    TagType
+  tagCode    String   // 언어 중립 코드 (예: OBJ_001, MOOD_042)
+  
+  // Gate B: reason 없으면 저장 불가 (스키마 레벨 강제)
+  reason     String   // 사유 1줄 (필수)
+  author     String   // 태깅 결정자
+  createdAt  DateTime @default(now())
+  version    Int      @default(1)
+  
+  // Data Premium: Confidence Level
+  confidenceLevel ConfidenceLevel @default(MEDIUM)
+  
+  // Language-Agnostic Node 연결
+  nodeId     String?  // LanguageAgnosticNode.id
+  node       LanguageAgnosticNode? @relation(fields: [nodeId], references: [id])
+  
+  @@unique([movieId, tagType, tagCode])
+  @@index([confidenceLevel])
+  @@index([createdAt])
+}
+
+enum TagType {
+  GENRE_PRIMARY
+  GENRE_SECONDARY
+  GENRE_SUBGENRE
+  MOOD
+  OBJECT
+  NARRATIVE_HINT
+  COUNTRY
+  YEAR
+}
+
+enum ConfidenceLevel {
+  HIGH    // 유저 확정 기반
+  MEDIUM  // 1인 위원회 검수
+  LOW     // 알고리즘 추정
+}
+
+// ============================================
+// Language-Agnostic Nodes (Cross-Locale Mapping)
+// ============================================
+model LanguageAgnosticNode {
+  id        String   @id @default(cuid())
+  code      String   @unique // 예: OBJ_001, MOOD_042
+  nodeType  TagType
+  
+  // Locale aliases
+  aliases   LocaleAlias[]
+  
+  // 연결된 태그
+  tags      MovieTag[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([code])
+  @@index([nodeType])
+}
+
+model LocaleAlias {
+  id       String   @id @default(cuid())
+  nodeId   String
+  node     LanguageAgnosticNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  locale   String   // 예: "ko", "en", "ja"
+  label    String   // 예: "우산", "Umbrella", "雨傘"
+  
+  @@unique([nodeId, locale])
+  @@index([locale])
+}
+
+// ============================================
+// 가격 방어 3종 세트
+// ============================================
+
+// (1) TMDb 상업화 전환 트리거
+model CommercialTransition {
+  id                            String   @id @default(cuid())
+  commercialTransitionRequired  Boolean  @default(false)
+  
+  // 트리거 조건
+  adsEnabled                    Boolean  @default(false)
+  paidFeaturesEnabled           Boolean  @default(false)
+  affiliateRevenueOccurred      Boolean  @default(false)
+  
+  // 감사
+  checkedAt                     DateTime @default(now())
+  checkedBy                     String
+  notes                         String?
+  
+  @@index([commercialTransitionRequired])
+}
+
+// (2) 공유 차단 감사 (이미지 URL 화이트리스트)
+model ShareAudit {
+  id          String   @id @default(cuid())
+  shareType   ShareType
+  content     String   // JSON 또는 HTML
+  detectedUrls String[] // 감지된 URL 목록
+  blocked     Boolean  // 차단 여부
+  createdAt   DateTime @default(now())
+  
+  @@index([blocked])
+  @@index([createdAt])
+}
+
+enum ShareType {
+  OG_IMAGE
+  TWITTER_CARD
+  FACEBOOK_SHARE
+  CACHE_RESPONSE
+  CDN_PATH
+}
+
+// (3) PII 삭제·파기 감사로그
+model PIIAuditLog {
+  id                  String   @id @default(cuid())
+  userId              String?  // 유저 ID (삭제 후 null 가능)
+  dataType            PIIDataType
+  deleteRequestedAt   DateTime
+  deleteCompletedAt   DateTime?
+  retentionExpiredAt  DateTime?
+  purgeCompletedAt    DateTime?
+  
+  // 옵트인/옵트아웃
+  optInStatus         Boolean?
+  maskingApplied      Boolean  @default(false)
+  
+  // SLA 산출용
+  slaMs               Int?     // deleteCompletedAt - deleteRequestedAt
+  
+  createdAt           DateTime @default(now())
+  
+  @@index([deleteRequestedAt])
+  @@index([deleteCompletedAt])
+  @@index([dataType])
+}
+
+enum PIIDataType {
+  USER_MEMORY_SENTENCE
+  SEARCH_SESSION
+  FEEDBACK
+  USER_PROFILE
+}
+
+// ============================================
+// 영화 메타데이터
+// ============================================
+model Movie {
+  id              String   @id @default(cuid())
+  tmdbId          Int?     @unique
+  title           String
+  originalTitle   String?
+  releaseDate     DateTime?
+  
+  // 포스터/스틸 URL (공유 차단 대상)
+  posterUrl       String?
+  stillUrl        String?
+  
+  // 장르 구조: 1+2+3
+  primaryGenre    String?
+  secondaryGenres String[] // 최대 2개
+  subgenres       String[] // 1~3개
+  
+  country         String?
+  year            Int?
+  
+  // 태그 연결
+  tags            MovieTag[]
+  
+  // 후보 연결
+  candidates      Candidate[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([tmdbId])
+  @@index([primaryGenre])
+  @@index([year])
+}
+
+// ============================================
+// 검색 세션 관련
+// ============================================
+model Candidate {
+  id              String   @id @default(cuid())
+  sessionId       String
+  session         SearchSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  movieId         String
+  movie           Movie @relation(fields: [movieId], references: [id])
+  
+  rank            Int      // 1, 2, 3
+  confidenceScore Float?   // 신뢰도 점수
+  
+  createdAt       DateTime @default(now())
+  
+  @@unique([sessionId, rank])
+  @@index([sessionId])
+}
+
+model Question {
+  id              String   @id @default(cuid())
+  sessionId       String
+  session         SearchSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  questionText    String
+  questionType    QuestionType
+  order           Int      // 1, 2
+  
+  createdAt       DateTime @default(now())
+  
+  @@index([sessionId])
+}
+
+enum QuestionType {
+  GENRE_CLARIFICATION
+  MOOD_CLARIFICATION
+  OBJECT_CLARIFICATION
+  YEAR_CLARIFICATION
+  OTHER
+}
+
+model Feedback {
+  id              String   @id @default(cuid())
+  sessionId       String
+  session         SearchSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  feedbackType    FeedbackType
+  content         String?
+  confirmedMovieId String? // 확정된 영화 ID
+  
+  createdAt       DateTime @default(now())
+  
+  @@index([sessionId])
+}
+
+enum FeedbackType {
+  CONFIRMED
+  NOT_FOUND
+  SUBMITTED_HINT
+  LOW_CONFIDENCE
+}
+
+// ============================================
+// Failure Refinery (실패 수집)
+// ============================================
+model FailureLog {
+  id              String   @id @default(cuid())
+  sessionId       String?
+  failureType     FailureType
+  userSentence    String?  // 원문 (PII 주의)
+  context         Json?    // 실패 컨텍스트
+  detectedPattern String?  // 패턴 감지 (v2+)
+  
+  createdAt       DateTime @default(now())
+  
+  @@index([failureType])
+  @@index([createdAt])
+}
+
+enum FailureType {
+  NO_CANDIDATES
+  LOW_CONFIDENCE_ALL
+  USER_REJECTED_ALL
+  QUESTION_FAILED
+  TIMEOUT
+  API_ERROR
+}
+
+// ============================================
+// API 모듈 거버넌스
+// ============================================
+model APIAuditLog {
+  id              String   @id @default(cuid())
+  module          APIModule
+  apiKey          String?  // 마스킹된 키
+  endpoint        String
+  method          String
+  statusCode      Int
+  responseTimeMs  Int
+  rateLimitHit    Boolean  @default(false)
+  
+  createdAt       DateTime @default(now())
+  
+  @@index([module])
+  @@index([createdAt])
+  @@index([apiKey])
+}
+
+enum APIModule {
+  GENRE_CLASSIFIER
+  CANDIDATE_RANKER
+  QUESTION_SELECTOR
+  FEEDBACK_HANDLER
+}
+
+model APIKey {
+  id              String   @id @default(cuid())
+  keyHash         String   @unique // 해시된 키
+  serviceName     String
+  partnerName     String?
+  modules         APIModule[] // 접근 가능한 모듈
+  rateLimitPerMin Int      @default(60)
+  isActive        Boolean  @default(true)
+  
+  createdAt       DateTime @default(now())
+  rotatedAt       DateTime?
+  revokedAt       DateTime?
+  
+  @@index([serviceName])
+  @@index([isActive])
+}
+

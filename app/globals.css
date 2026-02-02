@@ -1,0 +1,76 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Base Background - Dark Cinema / Archive */
+  --bg-primary: #0B1020;
+  --bg-secondary: #0B0F1A;
+  --bg-subtle-gradient-start: #070A14;
+  --bg-subtle-gradient-end: #0B1020;
+  
+  /* Surface / Card */
+  --surface-card: #111827;
+  --surface-card-alt: #0F172A;
+  --border-card: #243046;
+  --border-card-subtle: #2B3650;
+  
+  /* Text */
+  --text-primary: #E5E7EB;
+  --text-secondary: #9CA3AF;
+  --text-muted: #6B7280;
+  
+  /* Accent (제한적 사용) */
+  --accent-pink: #FF4D8D;
+  --accent-pink-bright: #FF5AA5;
+  --accent-violet: #7C3AED;
+  --accent-violet-bright: #8B5CF6;
+  
+  /* Film Strip */
+  --film-base: #1A1A1A;
+  --film-base-alt: #222222;
+  --film-sprocket: #9CA3AF;
+  --film-border: rgba(156, 163, 175, 0.2);
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* 필름 스트립 깜빡임 애니메이션 (프로젝터 효과) */
+@keyframes flicker {
+  0%, 100% {
+    opacity: 0.4;
+    filter: brightness(0.8);
+  }
+  50% {
+    opacity: 1;
+    filter: brightness(1.1);
+  }
+}
+
+/* 부드러운 스크롤 */
+html {
+  scroll-behavior: smooth;
+}
+
+/* 커스텀 스크롤바 */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+

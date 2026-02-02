@@ -1,0 +1,35 @@
+/**
+ * API Route: Question Selector Module
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { QuestionSelector } from '@/lib/api/modules/question-selector';
+import { APIAuditGate } from '@/lib/gates/api-audit-gate';
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const apiKey = request.headers.get('x-api-key') || undefined;
+
+    // Rate limit check
+    if (apiKey) {
+      const rateLimit = await APIAuditGate.checkRateLimit(apiKey, 'QUESTION_SELECTOR');
+      if (!rateLimit.allowed) {
+        return NextResponse.json(
+          { error: 'Rate limit exceeded' },
+          { status: 429 }
+        );
+      }
+    }
+
+    const result = await QuestionSelector.select(body, apiKey);
+
+    return NextResponse.json(result);
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error.message || 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
